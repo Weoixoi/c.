@@ -1,8 +1,5 @@
 // V1.0_simple_search_engine.c
-// 简易搜索引擎 V1.0 - 基础文档库管理功能
-// 数据结构：线性表（顺序表）
-// 编译运行：Dev-C++ 直接编译运行
-
+// 简易搜索引擎 V1.0 - 顺序线性表
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,8 +17,8 @@ typedef struct {
     char content[MAX_CONTENT];
     char category[MAX_CATEGORY];
     char author[MAX_AUTHOR];
-    char status[20];      // 草稿/已发布
-    char publishDate[20]; // 发布日期
+    char status[20];
+    char publishDate[20];
 } Document;
 
 typedef struct {
@@ -29,12 +26,14 @@ typedef struct {
     int length;
 } DocList;
 
-// 初始化线性表
+// 函数提前声明，彻底解决未定义报错
+void printDoc(Document *doc);
+void searchDoc(DocList *list, char *key);
+
 void initList(DocList *list) {
     list->length = 0;
 }
 
-// 添加文档（尾部插入）
 int addDoc(DocList *list, Document doc) {
     if (list->length >= MAX_SIZE) return 0;
     list->data[list->length] = doc;
@@ -42,7 +41,6 @@ int addDoc(DocList *list, Document doc) {
     return 1;
 }
 
-// 按ID删除（前移覆盖）
 int deleteById(DocList *list, int id) {
     for (int i = 0; i < list->length; i++) {
         if (list->data[i].id == id) {
@@ -56,24 +54,22 @@ int deleteById(DocList *list, int id) {
     return 0;
 }
 
-// 按ID修改，空输入不覆盖原内容
-int updateById(DocList *list, int id, char *newTitle, char *newContent, 
+int updateById(DocList *list, int id, char *newTitle, char *newContent,
                char *newCategory, char *newAuthor, char *newStatus, char *newDate) {
     for (int i = 0; i < list->length; i++) {
         if (list->data[i].id == id) {
-            if (strlen(newTitle) > 0) strcpy(list->data[i].title, newTitle);
-            if (strlen(newContent) > 0) strcpy(list->data[i].content, newContent);
-            if (strlen(newCategory) > 0) strcpy(list->data[i].category, newCategory);
-            if (strlen(newAuthor) > 0) strcpy(list->data[i].author, newAuthor);
-            if (strlen(newStatus) > 0) strcpy(list->data[i].status, newStatus);
-            if (strlen(newDate) > 0) strcpy(list->data[i].publishDate, newDate);
+            if (newTitle[0] != '\0') strcpy(list->data[i].title, newTitle);
+            if (newContent[0] != '\0') strcpy(list->data[i].content, newContent);
+            if (newCategory[0] != '\0') strcpy(list->data[i].category, newCategory);
+            if (newAuthor[0] != '\0') strcpy(list->data[i].author, newAuthor);
+            if (newStatus[0] != '\0') strcpy(list->data[i].status, newStatus);
+            if (newDate[0] != '\0') strcpy(list->data[i].publishDate, newDate);
             return 1;
         }
     }
     return 0;
 }
 
-// 按ID查找
 Document* findById(DocList *list, int id) {
     for (int i = 0; i < list->length; i++) {
         if (list->data[i].id == id) return &list->data[i];
@@ -81,13 +77,26 @@ Document* findById(DocList *list, int id) {
     return NULL;
 }
 
-// 关键词搜索（搜索引擎核心）
+// 打印文档函数 放在搜索前面
+void printDoc(Document *doc) {
+    printf("\n┌────────────────────────────────────────────────────────┐\n");
+    printf("│ ID: %d\n", doc->id);
+    printf("│ 标题: %s\n", doc->title);
+    printf("│ 栏目: %s | 作者: %s | 状态: %s | 日期: %s\n",
+           doc->category, doc->author, doc->status, doc->publishDate);
+    char summary[100];
+    strncpy(summary, doc->content, 80);
+    summary[80] = '\0';
+    printf("│ 摘要: %s%s\n", summary, strlen(doc->content) > 80 ? "..." : "");
+    printf("└────────────────────────────────────────────────────────┘\n");
+}
+
 void searchDoc(DocList *list, char *key)
 {
     int cnt = 0;
     for(int i = 0; i < list->length; i++)
     {
-        if(strstr(list->data[i].title, key) || strstr(list->data[i].content, key))
+        if(strstr(list->data[i].title, key) != NULL || strstr(list->data[i].content, key) != NULL)
         {
             printDoc(&list->data[i]);
             cnt++;
@@ -97,10 +106,9 @@ void searchDoc(DocList *list, char *key)
         printf("未匹配到相关文档！\n");
 }
 
-// 保存到文件
 void saveToFile(DocList *list) {
     FILE *fp = fopen(DATA_FILE, "w");
-    if (!fp) 
+    if (!fp)
     {
         printf("文件保存失败！\n");
         return;
@@ -118,15 +126,15 @@ void saveToFile(DocList *list) {
     fclose(fp);
 }
 
-// 从文件加载
 void loadFromFile(DocList *list) {
     FILE *fp = fopen(DATA_FILE, "r");
     if (!fp) return;
     int n;
-    fscanf(fp, "%d\n", &n);
+    fscanf(fp, "%d", &n);
     for (int i = 0; i < n && i < MAX_SIZE; i++) {
         Document doc;
-        fscanf(fp, "%d\n", &doc.id);
+        fscanf(fp, "%d", &doc.id);
+        getchar();
         fgets(doc.title, MAX_TITLE, fp); doc.title[strcspn(doc.title, "\n")] = 0;
         fgets(doc.content, MAX_CONTENT, fp); doc.content[strcspn(doc.content, "\n")] = 0;
         fgets(doc.category, MAX_CATEGORY, fp); doc.category[strcspn(doc.category, "\n")] = 0;
@@ -138,31 +146,16 @@ void loadFromFile(DocList *list) {
     fclose(fp);
 }
 
-// 打印单个文档
-void printDoc(Document *doc) {
-    printf("\n┌────────────────────────────────────────────────────────┐\n");
-    printf("│ ID: %d\n", doc->id);
-    printf("│ 标题: %s\n", doc->title);
-    printf("│ 栏目: %s | 作者: %s | 状态: %s | 日期: %s\n", 
-           doc->category, doc->author, doc->status, doc->publishDate);
-    char summary[100];
-    strncpy(summary, doc->content, 80);
-    summary[80] = '\0';
-    printf("│ 摘要: %s%s\n", summary, strlen(doc->content) > 80 ? "..." : "");
-    printf("└────────────────────────────────────────────────────────┘\n");
-}
-
 int main() {
     DocList docs;
     initList(&docs);
     loadFromFile(&docs);
-    
-    // 计算下一个可用ID
+
     int nextId = 1;
     for (int i = 0; i < docs.length; i++) {
         if (docs.data[i].id >= nextId) nextId = docs.data[i].id + 1;
     }
-    
+
     while (1) {
         printf("\n╔════════════════════════════════════════════════════════════╗\n");
         printf("║     简易搜索引擎 V1.0 - 基础文档库管理功能                  ║\n");
@@ -171,11 +164,11 @@ int main() {
         printf("║  4. 关键词搜索    5. 查看全部文档  6. 保存并退出            ║\n");
         printf("╚════════════════════════════════════════════════════════════╝\n");
         printf("请选择: ");
-        
+
         int choice;
         scanf("%d", &choice);
         getchar();
-        
+
         if (choice == 1) {
             printf("\n--- 添加新文档 ---\n");
             Document doc;
@@ -186,7 +179,7 @@ int main() {
             printf("作者: "); fgets(doc.author, MAX_AUTHOR, stdin); doc.author[strcspn(doc.author, "\n")] = 0;
             printf("状态(草稿/已发布): "); fgets(doc.status, 20, stdin); doc.status[strcspn(doc.status, "\n")] = 0;
             printf("发布日期(YYYY-MM-DD): "); fgets(doc.publishDate, 20, stdin); doc.publishDate[strcspn(doc.publishDate, "\n")] = 0;
-            
+
             if (addDoc(&docs, doc)) {
                 printf("✓ 添加成功！文档ID: %d\n", nextId);
                 nextId++;
@@ -214,14 +207,14 @@ int main() {
             if (doc) {
                 printf("当前文档信息：\n");
                 printDoc(doc);
-                
+
                 char newTitle[MAX_TITLE] = "";
                 char newContent[MAX_CONTENT] = "";
                 char newCategory[MAX_CATEGORY] = "";
                 char newAuthor[MAX_AUTHOR] = "";
                 char newStatus[20] = "";
                 char newDate[20] = "";
-                
+
                 printf("\n(直接回车表示不修改)\n");
                 printf("新标题 [%s]: ", doc->title); fgets(newTitle, MAX_TITLE, stdin); newTitle[strcspn(newTitle, "\n")] = 0;
                 printf("新内容 [%s...]: ", doc->content); fgets(newContent, MAX_CONTENT, stdin); newContent[strcspn(newContent, "\n")] = 0;
@@ -229,7 +222,7 @@ int main() {
                 printf("新作者 [%s]: ", doc->author); fgets(newAuthor, MAX_AUTHOR, stdin); newAuthor[strcspn(newAuthor, "\n")] = 0;
                 printf("新状态 [%s]: ", doc->status); fgets(newStatus, 20, stdin); newStatus[strcspn(newStatus, "\n")] = 0;
                 printf("新日期 [%s]: ", doc->publishDate); fgets(newDate, 20, stdin); newDate[strcspn(newDate, "\n")] = 0;
-                
+
                 updateById(&docs, id, newTitle, newContent, newCategory, newAuthor, newStatus, newDate);
                 printf("✓ 修改成功\n");
             } else {
