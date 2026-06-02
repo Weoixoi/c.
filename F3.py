@@ -411,3 +411,199 @@ void compareBFvsKMP(DocManager& manager) {
     printf("\n注：提速比 = BF耗时 / KMP耗时，>1 表示 KMP 更快。\n");
     printf("当前测试基于单次匹配，实际应用中模式串越长、文本越长，KMP优势越明显。\n");
 }
+// ---------- 主程序 ----------
+int main() {
+    DocManager docs;
+    docs.loadFromFile();
+    UndoStack undoStack;
+    SearchHistoryQueue searchHistory;
+
+    // 计算下一个可用ID
+    int nextId = 1;
+    for (int i = 0; i < docs.getLength(); ++i) {
+        if (docs.getDoc(i)->id >= nextId)
+            nextId = docs.getDoc(i)->id + 1;
+    }
+
+    while (true) {
+        printf("\n╔══════════════════════════════════════════════════════════════════════╗\n");
+        printf("║     简易搜索引擎 V3.0 （BF/KMP匹配 · 多维度筛选 · 效率对比）        ║\n");
+        printf("╠══════════════════════════════════════════════════════════════════════╣\n");
+        printf("║  1.添加文档  2.删除文档  3.修改文档  4.查看全部文档                ║\n");
+        printf("║  5.搜索文档  6.撤销操作  7.查看搜索历史  8.保存并退出              ║\n");
+        printf("║  9.算法效率对比测试 (BF vs KMP)                                   ║\n");
+        printf("╚══════════════════════════════════════════════════════════════════════╝\n");
+        printf("请选择: ");
+
+        int choice;
+        scanf("%d", &choice);
+        getchar(); // 吞掉换行
+
+        if (choice == 1) {  // 添加文档
+            printf("\n--- 添加新文档 ---\n");
+            Document doc;
+            doc.id = nextId;
+            printf("标题: ");   fgets(doc.title, MAX_TITLE, stdin);   doc.title[strcspn(doc.title, "\n")] = 0;
+            printf("内容: ");   fgets(doc.content, MAX_CONTENT, stdin); doc.content[strcspn(doc.content, "\n")] = 0;
+            printf("栏目(财经/科技/时尚): "); fgets(doc.category, MAX_CATEGORY, stdin); doc.category[strcspn(doc.category, "\n")] = 0;
+            printf("作者: ");   fgets(doc.author, MAX_AUTHOR, stdin);   doc.author[strcspn(doc.author, "\n")] = 0;
+            printf("状态(草稿/已发布): "); fgets(doc.status, 20, stdin); doc.status[strcspn(doc.status, "\n")] = 0;
+            printf("发布日期(YYYY-MM-DD): "); fgets(doc.publishDate, 20, stdin); doc.publishDate[strcspn(doc.publishDate, "\n")] = 0;
+
+            if (docs.addDoc(doc)) {
+                printf("? 添加成功！文档ID: %d\n", nextId);
+                Action act;
+                act.type = OP_ADD;
+                act.doc = doc;
+                undoStack.push(act);
+                nextId++;
+            } else {
+                printf("? 添加失败：文档库已满\n");
+            }
+        }
+        else if (choice == 2) {  // 删除文档
+            int id;
+            printf("请输入要删除的文档ID: ");
+            scanf("%d", &id);
+            getchar();
+            Document* target = docs.findById(id);
+            if (target) {
+                Action act;
+                act.type = OP_DELETE;
+                act.doc = *target;
+                undoStack.push(act);
+                docs.deleteById(id);
+                printf("? 删除成功（可撤销）\n");
+            } else {
+                printf("? 未找到ID为%d的文档\n", id);
+            }
+        }
+        else if (choice == 3) {  // 修改文档
+            int id;
+            printf("请输入要修改的文档ID: ");
+            scanf("%d", &id);
+            getchar();
+            Document* doc = docs.findById(id);
+            if (doc) {
+                printf("当前文档信息：\n");
+                printDoc(doc);
+                Action act;
+                act.type = OP_UPDATE;
+                act.doc = *doc;
+                undoStack.push(act);
+
+                char newTitle[MAX_TITLE] = "";
+                char newContent[MAX_CONTENT] = "";
+                char newCategory[MAX_CATEGORY] = "";
+                char newAuthor[MAX_AUTHOR] = "";
+                char newStatus[20] = "";
+                char newDate[20] = "";
+
+                printf("\n(直接回车表示不修改)\n");
+                printf("新标题 [%s]: ", doc->title);         fgets(newTitle, MAX_TITLE, stdin);       newTitle[strcspn(newTitle, "\n")] = 0;
+                printf("新内容 [%s...]: ", doc->content);    fgets(newContent, MAX_CONTENT, stdin);  newContent[strcspn(newContent, "\n")] = 0;
+                printf("新栏目 [%s]: ", doc->category);     fgets(newCategory, MAX_CATEGORY, stdin); newCategory[strcspn(newCategory, "\n")] = 0;
+                printf("新作者 [%s]: ", doc->author);       fgets(newAuthor, MAX_AUTHOR, stdin);    newAuthor[strcspn(newAuthor, "\n")] = 0;
+                printf("新状态 [%s]: ", doc->status);       fgets(newStatus, 20, stdin);            newStatus[strcspn(newStatus, "\n")] = 0;
+                printf("新日期 [%s]: ", doc->publishDate);  fgets(newDate, 20, stdin);              newDate[strcspn(newDate, "\n")] = 0;
+
+                docs.updateById(id, newTitle, newContent, newCategory, newAuthor, newStatus, newDate);
+                printf("? 修改成功（可撤销）\n");
+            } else {
+                printf("? 未找到ID为%d的文档\n", id);
+            }
+        }
+        else if (choice == 4) {  // 查看全部
+            printf("\n--- 全部文档列表 (共%d篇) ---\n", docs.getLength());
+            if (docs.getLength() == 0)
+                printf("暂无文档\n");
+            else
+                for (int i = 0; i < docs.getLength(); ++i)
+                    printDoc(docs.getDoc(i));
+        }
+        else if (choice == 5) {  // 搜索文档（V3.0 增强：算法选择 + 筛选）
+            printf("请输入搜索关键词: ");
+            char keyword[MAX_CONTENT];
+            fgets(keyword, MAX_CONTENT, stdin);
+            keyword[strcspn(keyword, "\n")] = 0;
+            if (strlen(keyword) == 0) {
+                printf("关键词不能为空。\n");
+                continue;
+            }
+
+            printf("\n请选择匹配算法:\n");
+            printf("  1. BF (Brute-Force) 朴素匹配\n");
+            printf("  2. KMP (Knuth-Morris-Pratt) 快速匹配\n");
+            printf("请选择 (1/2): ");
+            int algoChoice;
+            scanf("%d", &algoChoice);
+            getchar();
+            if (algoChoice != 1 && algoChoice != 2) {
+                printf("无效选择，默认使用 KMP。\n");
+                algoChoice = 2;
+            }
+
+            printf("\n是否启用多维度筛选? (y/n): ");
+            char yn;
+            scanf("%c", &yn);
+            getchar();
+            Filter filter = {"", "", "", "", ""};  // 默认空
+            if (yn == 'y' || yn == 'Y') {
+                printf("  [筛选条件 - 直接回车表示不限]\n");
+                printf("  栏目: "); fgets(filter.category, MAX_CATEGORY, stdin); filter.category[strcspn(filter.category, "\n")] = 0;
+                printf("  作者: "); fgets(filter.author, MAX_AUTHOR, stdin); filter.author[strcspn(filter.author, "\n")] = 0;
+                printf("  状态: "); fgets(filter.status, 20, stdin); filter.status[strcspn(filter.status, "\n")] = 0;
+                printf("  起始日期(YYYY-MM-DD): "); fgets(filter.startDate, 20, stdin); filter.startDate[strcspn(filter.startDate, "\n")] = 0;
+                printf("  结束日期(YYYY-MM-DD): "); fgets(filter.endDate, 20, stdin); filter.endDate[strcspn(filter.endDate, "\n")] = 0;
+            }
+
+            searchDocs(docs, keyword, algoChoice, filter, searchHistory);
+        }
+        else if (choice == 6) {  // 撤销操作
+            Action act;
+            if (!undoStack.pop(act)) {
+                printf("没有可撤销的操作。\n");
+                continue;
+            }
+            if (act.type == OP_ADD) {
+                if (docs.deleteById(act.doc.id))
+                    printf("? 已撤销添加（删除文档 ID=%d）\n", act.doc.id);
+                else
+                    printf("? 撤销失败：可能文档已被删除\n");
+            }
+            else if (act.type == OP_DELETE) {
+                if (docs.addDoc(act.doc))
+                    printf("? 已撤销删除（恢复文档 ID=%d）\n", act.doc.id);
+                else
+                    printf("? 撤销失败：文档库已满\n");
+            }
+            else if (act.type == OP_UPDATE) {
+                int idx = docs.findIndexById(act.doc.id);
+                if (idx != -1) {
+                    docs.updateById(act.doc.id, act.doc.title, act.doc.content,
+                                    act.doc.category, act.doc.author,
+                                    act.doc.status, act.doc.publishDate);
+                    printf("? 已撤销修改（恢复文档 ID=%d）\n", act.doc.id);
+                } else {
+                    docs.addDoc(act.doc);
+                    printf("? 已撤销修改并恢复文档 ID=%d\n", act.doc.id);
+                }
+            }
+        }
+        else if (choice == 7) {  // 查看搜索历史
+            searchHistory.display();
+        }
+        else if (choice == 8) {  // 保存并退出
+            docs.saveToFile();
+            printf("? 文档已保存，再见！\n");
+            break;
+        }
+        else if (choice == 9) {  // 效率对比测试（V3.0 新增）
+            compareBFvsKMP(docs);
+        }
+        else {
+            printf("? 无效选择，请重新输入\n");
+        }
+    }
+    return 0;
+}
