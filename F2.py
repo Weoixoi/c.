@@ -80,6 +80,28 @@ public:
         int idx = findIndexById(id);
         return (idx != -1) ? &data[idx] : nullptr;
     }
+=======
+
+    // 按ID修改
+    bool updateById(int id, const char* newTitle, const char* newContent,
+                    const char* newCategory, const char* newAuthor,
+                    const char* newStatus, const char* newDate) {
+        int idx = findIndexById(id);
+        if (idx == -1) return false;
+        if (newTitle && strlen(newTitle) > 0)    strcpy(data[idx].title, newTitle);
+        if (newContent && strlen(newContent) > 0) strcpy(data[idx].content, newContent);
+        if (newCategory && strlen(newCategory) > 0) strcpy(data[idx].category, newCategory);
+        if (newAuthor && strlen(newAuthor) > 0)  strcpy(data[idx].author, newAuthor);
+        if (newStatus && strlen(newStatus) > 0)  strcpy(data[idx].status, newStatus);
+        if (newDate && strlen(newDate) > 0)      strcpy(data[idx].publishDate, newDate);
+        return true;
+    }
+
+    // 按ID获取文档指针
+    Document* findById(int id) {
+        int idx = findIndexById(id);
+        return (idx != -1) ? &data[idx] : nullptr;
+    }
   // 保存到文件
     void saveToFile() const {
         FILE* fp = fopen(DATA_FILE, "w");
