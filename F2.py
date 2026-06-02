@@ -271,3 +271,175 @@ bool searchDocs(DocManager& manager, const char* keyword, SearchHistoryQueue& hi
         return true;
     }
 }
+// ---------- 主程序 ----------
+int main() {
+    DocManager docs;
+    docs.loadFromFile();
+    UndoStack undoStack;
+    SearchHistoryQueue searchHistory;
+
+    // 计算下一个可用ID
+    int nextId = 1;
+    for (int i = 0; i < docs.getLength(); ++i) {
+        if (docs.getDoc(i)->id >= nextId)
+            nextId = docs.getDoc(i)->id + 1;
+    }
+
+    while (true) {
+        printf("\n╔════════════════════════════════════════════════════════════╗\n");
+        printf("║     简易搜索引擎 V2.0 （栈·撤销 / 队列·历史）              ║\n");
+        printf("╠════════════════════════════════════════════════════════════╣\n");
+        printf("║  1.添加文档  2.删除文档  3.修改文档  4.查看全部文档        ║\n");
+        printf("║  5.搜索文档  6.撤销操作  7.查看搜索历史  8.保存并退出      ║\n");
+        printf("╚════════════════════════════════════════════════════════════╝\n");
+        printf("请选择: ");
+
+        int choice;
+        scanf("%d", &choice);
+        getchar(); // 吞掉换行
+
+        if (choice == 1) {  // 添加文档
+            printf("\n--- 添加新文档 ---\n");
+            Document doc;
+            doc.id = nextId;
+            printf("标题: ");   fgets(doc.title, MAX_TITLE, stdin);   doc.title[strcspn(doc.title, "\n")] = 0;
+            printf("内容: ");   fgets(doc.content, MAX_CONTENT, stdin); doc.content[strcspn(doc.content, "\n")] = 0;
+            printf("栏目(财经/科技/时尚): "); fgets(doc.category, MAX_CATEGORY, stdin); doc.category[strcspn(doc.category, "\n")] = 0;
+            printf("作者: ");   fgets(doc.author, MAX_AUTHOR, stdin);   doc.author[strcspn(doc.author, "\n")] = 0;
+            printf("状态(草稿/已发布): "); fgets(doc.status, 20, stdin); doc.status[strcspn(doc.status, "\n")] = 0;
+            printf("发布日期(YYYY-MM-DD): "); fgets(doc.publishDate, 20, stdin); doc.publishDate[strcspn(doc.publishDate, "\n")] = 0;
+
+            if (docs.addDoc(doc)) {
+                printf("? 添加成功！文档ID: %d\n", nextId);
+                // 记录操作（用于撤销）
+                Action act;
+                act.type = OP_ADD;
+                act.doc = doc;
+                undoStack.push(act);
+                nextId++;
+            } else {
+                printf("? 添加失败：文档库已满\n");
+            }
+        }
+        else if (choice == 2) {  // 删除文档
+            int id;
+            printf("请输入要删除的文档ID: ");
+            scanf("%d", &id);
+            getchar();
+            Document* target = docs.findById(id);
+            if (target) {
+                // 保存文档快照，记录操作
+                Action act;
+                act.type = OP_DELETE;
+                act.doc = *target;  // 复制一份
+                undoStack.push(act);
+                docs.deleteById(id);
+                printf("? 删除成功（可撤销）\n");
+            } else {
+                printf("? 未找到ID为%d的文档\n", id);
+            }
+        }
+        else if (choice == 3) {  // 修改文档
+            int id;
+            printf("请输入要修改的文档ID: ");
+            scanf("%d", &id);
+            getchar();
+            Document* doc = docs.findById(id);
+            if (doc) {
+                printf("当前文档信息：\n");
+                printDoc(doc);
+                // 保存修改前的快照
+                Action act;
+                act.type = OP_UPDATE;
+                act.doc = *doc;
+                undoStack.push(act);
+
+                char newTitle[MAX_TITLE] = "";
+                char newContent[MAX_CONTENT] = "";
+                char newCategory[MAX_CATEGORY] = "";
+                char newAuthor[MAX_AUTHOR] = "";
+                char newStatus[20] = "";
+                char newDate[20] = "";
+
+                printf("\n(直接回车表示不修改)\n");
+                printf("新标题 [%s]: ", doc->title);         fgets(newTitle, MAX_TITLE, stdin);       newTitle[strcspn(newTitle, "\n")] = 0;
+                printf("新内容 [%s...]: ", doc->content);    fgets(newContent, MAX_CONTENT, stdin);  newContent[strcspn(newContent, "\n")] = 0;
+                printf("新栏目 [%s]: ", doc->category);     fgets(newCategory, MAX_CATEGORY, stdin); newCategory[strcspn(newCategory, "\n")] = 0;
+                printf("新作者 [%s]: ", doc->author);       fgets(newAuthor, MAX_AUTHOR, stdin);    newAuthor[strcspn(newAuthor, "\n")] = 0;
+                printf("新状态 [%s]: ", doc->status);       fgets(newStatus, 20, stdin);            newStatus[strcspn(newStatus, "\n")] = 0;
+                printf("新日期 [%s]: ", doc->publishDate);  fgets(newDate, 20, stdin);              newDate[strcspn(newDate, "\n")] = 0;
+
+                docs.updateById(id, newTitle, newContent, newCategory, newAuthor, newStatus, newDate);
+                printf("? 修改成功（可撤销）\n");
+            } else {
+                printf("? 未找到ID为%d的文档\n", id);
+            }
+        }
+        else if (choice == 4) {  // 查看全部
+            printf("\n--- 全部文档列表 (共%d篇) ---\n", docs.getLength());
+            if (docs.getLength() == 0)
+                printf("暂无文档\n");
+            else
+                for (int i = 0; i < docs.getLength(); ++i)
+                    printDoc(docs.getDoc(i));
+        }
+        else if (choice == 5) {  // 搜索文档
+            printf("请输入搜索关键词: ");
+            char keyword[MAX_CONTENT];
+            fgets(keyword, MAX_CONTENT, stdin);
+            keyword[strcspn(keyword, "\n")] = 0;
+            if (strlen(keyword) == 0) {
+                printf("关键词不能为空。\n");
+                continue;
+            }
+            searchDocs(docs, keyword, searchHistory);
+        }
+        else if (choice == 6) {  // 撤销操作
+            Action act;
+            if (!undoStack.pop(act)) {
+                printf("没有可撤销的操作。\n");
+                continue;
+            }
+            if (act.type == OP_ADD) {
+                // 撤销添加 -> 删除该文档
+                if (docs.deleteById(act.doc.id))
+                    printf("? 已撤销添加（删除文档 ID=%d）\n", act.doc.id);
+                else
+                    printf("? 撤销失败：可能文档已被删除\n");
+            }
+            else if (act.type == OP_DELETE) {
+                // 撤销删除 -> 重新添加文档
+                if (docs.addDoc(act.doc))
+                    printf("? 已撤销删除（恢复文档 ID=%d）\n", act.doc.id);
+                else
+                    printf("? 撤销失败：文档库已满\n");
+            }
+            else if (act.type == OP_UPDATE) {
+                // 撤销修改 -> 用旧文档覆盖
+                int idx = docs.findIndexById(act.doc.id);
+                if (idx != -1) {
+                    docs.updateById(act.doc.id, act.doc.title, act.doc.content,
+                                    act.doc.category, act.doc.author,
+                                    act.doc.status, act.doc.publishDate);
+                    printf("? 已撤销修改（恢复文档 ID=%d）\n", act.doc.id);
+                } else {
+                    // 如果文档已被删除，则恢复它（添加旧文档）
+                    docs.addDoc(act.doc);
+                    printf("? 已撤销修改并恢复文档 ID=%d\n", act.doc.id);
+                }
+            }
+        }
+        else if (choice == 7) {  // 查看搜索历史
+            searchHistory.display();
+        }
+        else if (choice == 8) {  // 保存并退出
+            docs.saveToFile();
+            printf("? 文档已保存，再见！\n");
+            break;
+        }
+        else {
+            printf("? 无效选择，请重新输入\n");
+        }
+    }
+    return 0;
+}
