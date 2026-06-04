@@ -1,3 +1,312 @@
+// V4.0_search_engine.cpp
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <cctype>
+
+#define MAX_SIZE 100
+#define MAX_TITLE 100
+#define MAX_CONTENT 500
+#define MAX_CATEGORY 20
+#define MAX_AUTHOR 50
+#define MAX_KEYWORD 50
+#define MAX_DOCS_PER_KEY 50
+#define DATA_FILE "documents.txt"
+
+// ---------- 文档结构体 ----------
+struct Document {
+    int id;
+    char title[MAX_TITLE];
+    char content[MAX_CONTENT];
+    char category[MAX_CATEGORY];
+    char author[MAX_AUTHOR];
+    char status[20];
+    char publishDate[20];
+};
+
+// ---------- 筛选条件结构体 ----------
+struct Filter {
+    char category[MAX_CATEGORY];
+    char author[MAX_AUTHOR];
+    char status[20];
+    char startDate[20];
+    char endDate[20];
+};
+
+// ---------- 顺序表管理的文档库 ----------
+class DocManager {
+private:
+    Document data[MAX_SIZE];
+    int length;
+public:
+    DocManager() { length = 0; }
+    int getLength() const { return length; }
+    Document* getDoc(int idx) { return (idx >= 0 && idx < length) ? &data[idx] : nullptr; }
+
+    int findIndexById(int id) const {
+        for (int i = 0; i < length; ++i)
+            if (data[i].id == id) return i;
+        return -1;
+    }
+
+    bool addDoc(const Document& doc) {
+        if (length >= MAX_SIZE) return false;
+        data[length] = doc;
+        length++;
+        return true;
+    }
+
+    bool deleteById(int id) {
+        int idx = findIndexById(id);
+        if (idx == -1) return false;
+        for (int i = idx; i < length - 1; ++i)
+            data[i] = data[i + 1];
+        length--;
+        return true;
+    }
+
+    bool updateById(int id, const char* newTitle, const char* newContent,
+                    const char* newCategory, const char* newAuthor,
+                    const char* newStatus, const char* newDate) {
+        int idx = findIndexById(id);
+        if (idx == -1) return false;
+        if (newTitle && strlen(newTitle) > 0)    strcpy(data[idx].title, newTitle);
+        if (newContent && strlen(newContent) > 0) strcpy(data[idx].content, newContent);
+        if (newCategory && strlen(newCategory) > 0) strcpy(data[idx].category, newCategory);
+        if (newAuthor && strlen(newAuthor) > 0)  strcpy(data[idx].author, newAuthor);
+        if (newStatus && strlen(newStatus) > 0)  strcpy(data[idx].status, newStatus);
+        if (newDate && strlen(newDate) > 0)      strcpy(data[idx].publishDate, newDate);
+        return true;
+    }
+
+    Document* findById(int id) {
+        int idx = findIndexById(id);
+        return (idx != -1) ? &data[idx] : nullptr;
+    }
+
+    void saveToFile() const {
+        FILE* fp = fopen(DATA_FILE, "w");
+        if (!fp) return;
+        fprintf(fp, "%d\n", length);
+        for (int i = 0; i < length; ++i) {
+            fprintf(fp, "%d\n", data[i].id);
+            fprintf(fp, "%s\n", data[i].title);
+            fprintf(fp, "%s\n", data[i].content);
+            fprintf(fp, "%s\n", data[i].category);
+            fprintf(fp, "%s\n", data[i].author);
+            fprintf(fp, "%s\n", data[i].status);
+            fprintf(fp, "%s\n", data[i].publishDate);
+        }
+        fclose(fp);
+    }
+
+    void loadFromFile() {
+        FILE* fp = fopen(DATA_FILE, "r");
+        if (!fp) return;
+        int n;
+        fscanf(fp, "%d\n", &n);
+        for (int i = 0; i < n && i < MAX_SIZE; ++i) {
+            Document doc;
+            fscanf(fp, "%d\n", &doc.id);
+            fgets(doc.title, MAX_TITLE, fp);   doc.title[strcspn(doc.title, "\n")] = 0;
+            fgets(doc.content, MAX_CONTENT, fp); doc.content[strcspn(doc.content, "\n")] = 0;
+            fgets(doc.category, MAX_CATEGORY, fp); doc.category[strcspn(doc.category, "\n")] = 0;
+            fgets(doc.author, MAX_AUTHOR, fp);  doc.author[strcspn(doc.author, "\n")] = 0;
+            fgets(doc.status, 20, fp);          doc.status[strcspn(doc.status, "\n")] = 0;
+            fgets(doc.publishDate, 20, fp);     doc.publishDate[strcspn(doc.publishDate, "\n")] = 0;
+            addDoc(doc);
+        }
+        fclose(fp);
+    }
+};
+
+// ---------- 操作类型枚举 ----------
+enum OpType { OP_ADD, OP_DELETE, OP_UPDATE };
+
+struct Action {
+    OpType type;
+    Document doc;
+};
+
+// ---------- 顺序栈（用于撤销） ----------
+class UndoStack {
+private:
+    static const int MAX_UNDO = 20;
+    Action actions[MAX_UNDO];
+    int top;
+public:
+    UndoStack() : top(0) {}
+    bool isEmpty() const { return top == 0; }
+    bool push(const Action& act) {
+        if (top >= MAX_UNDO) return false;
+        actions[top++] = act;
+        return true;
+    }
+    bool pop(Action& act) {
+        if (isEmpty()) return false;
+        act = actions[--top];
+        return true;
+    }
+};
+
+// ---------- 循环队列（搜索历史） ----------
+class SearchHistoryQueue {
+private:
+    static const int HISTORY_SIZE = 10;
+    char history[HISTORY_SIZE][MAX_CONTENT];
+    int front, rear, count;
+public:
+    SearchHistoryQueue() : front(0), rear(0), count(0) {}
+    bool isEmpty() const { return count == 0; }
+    bool isFull() const { return count == HISTORY_SIZE; }
+    void enqueue(const char* keyword) {
+        strncpy(history[rear], keyword, MAX_CONTENT - 1);
+        history[rear][MAX_CONTENT - 1] = '\0';
+        rear = (rear + 1) % HISTORY_SIZE;
+        if (isFull()) {
+            front = (front + 1) % HISTORY_SIZE;
+        } else {
+            count++;
+        }
+    }
+    void display() const {
+        if (isEmpty()) {
+            printf("暂无搜索历史。\n");
+            return;
+        }
+        printf("搜索历史（最近 %d 条，从旧到新）：\n", count);
+        int idx = front;
+        for (int i = 0; i < count; ++i) {
+            printf("  %d. %s\n", i+1, history[idx]);
+            idx = (idx + 1) % HISTORY_SIZE;
+        }
+    }
+};
+
+// ========== V4.0 核心：BST 倒排索引 ==========
+struct BSTNode {
+    char keyword[MAX_KEYWORD];
+    int docIds[MAX_DOCS_PER_KEY];
+    int docCount;
+    BSTNode *left, *right;
+
+    BSTNode(const char* kw, int docId) {
+        strncpy(keyword, kw, MAX_KEYWORD - 1);
+        keyword[MAX_KEYWORD - 1] = '\0';
+        docIds[0] = docId;
+        docCount = 1;
+        left = right = nullptr;
+    }
+};
+
+class BSTIndex {
+private:
+    BSTNode* root;
+
+    void insertNode(BSTNode*& node, const char* kw, int docId) {
+        if (node == nullptr) {
+            node = new BSTNode(kw, docId);
+            return;
+        }
+        int cmp = strcmp(kw, node->keyword);
+        if (cmp == 0) {
+            // 如果词已存在，避免重复添加相同ID
+            for (int i = 0; i < node->docCount; ++i) {
+                if (node->docIds[i] == docId) return;
+            }
+            if (node->docCount < MAX_DOCS_PER_KEY) {
+                node->docIds[node->docCount++] = docId;
+            }
+        } else if (cmp < 0) {
+            insertNode(node->left, kw, docId);
+        } else {
+            insertNode(node->right, kw, docId);
+        }
+    }
+
+    void deleteNode(BSTNode*& node, const char* kw) {
+        if (node == nullptr) return;
+        int cmp = strcmp(kw, node->keyword);
+        if (cmp < 0) {
+            deleteNode(node->left, kw);
+        } else if (cmp > 0) {
+            deleteNode(node->right, kw);
+        } else {
+            // 找到节点，在这里只是删除该关键词（索引）
+            BSTNode* temp = node;
+            if (node->left == nullptr) {
+                node = node->right;
+                delete temp;
+            } else if (node->right == nullptr) {
+                node = node->left;
+                delete temp;
+            } else {
+                BSTNode* minNode = node->right;
+                while (minNode->left != nullptr) minNode = minNode->left;
+                strcpy(node->keyword, minNode->keyword);
+                node->docCount = minNode->docCount;
+                for (int i = 0; i < minNode->docCount; ++i)
+                    node->docIds[i] = minNode->docIds[i];
+                deleteNode(node->right, minNode->keyword);
+            }
+        }
+    }
+
+    void clearTree(BSTNode* node) {
+        if (node == nullptr) return;
+        clearTree(node->left);
+        clearTree(node->right);
+        delete node;
+    }
+
+    int* searchNode(BSTNode* node, const char* kw, int& count) const {
+        if (node == nullptr) {
+            count = 0;
+            return nullptr;
+        }
+        int cmp = strcmp(kw, node->keyword);
+        if (cmp == 0) {
+            count = node->docCount;
+            return node->docIds;
+        } else if (cmp < 0) {
+            return searchNode(node->left, kw, count);
+        } else {
+            return searchNode(node->right, kw, count);
+        }
+    }
+
+    void inorderPrint(BSTNode* node) const {
+        if (node == nullptr) return;
+        inorderPrint(node->left);
+        printf("  '%s' -> %d docs\n", node->keyword, node->docCount);
+        inorderPrint(node->right);
+    }
+
+public:
+    BSTIndex() : root(nullptr) {}
+    ~BSTIndex() { clearTree(root); }
+
+    void insert(const char* kw, int docId) {
+        insertNode(root, kw, docId);
+    }
+
+    void removeKeyword(const char* kw) {
+        deleteNode(root, kw);
+    }
+
+    int* search(const char* kw, int& count) const {
+        return searchNode(root, kw, count);
+    }
+
+    void printAll() const {
+        inorderPrint(root);
+    }
+
+    void clear() {
+        clearTree(root);
+        root = nullptr;
+    }
 // 辅助：对于文档删除，需要遍历整个树移除对应docId
     void removeDocIdFromAll(int docId) {
         // 简单实现：重新构建索引（如果文档数量不大，可以接受）
