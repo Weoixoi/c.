@@ -1,3 +1,148 @@
+// V6.0_search_engine.cpp - 可直接在 Dev-C++ 运行的完整版
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <cctype>
+#include <string>
+#include <algorithm>
+// Windows下使用 WinSock2 实现简易 WebSocket (Dev-C++默认支持)
+#include <winsock2.h>
+#include <windows.h>
+#pragma comment(lib, "ws2_32.lib")
+
+using namespace std;
+
+#define MAX_SIZE 100
+#define MAX_TITLE 100
+#define MAX_CONTENT 500
+#define MAX_CATEGORY 20
+#define MAX_AUTHOR 50
+#define MAX_KEYWORD 50
+#define MAX_DOCS_PER_KEY 50
+#define DATA_FILE "documents.txt"
+#define HASH_SIZE 211 
+
+// ---------- 文档结构 ----------
+struct Document {
+    int id;
+    char title[MAX_TITLE], content[MAX_CONTENT], category[MAX_CATEGORY];
+    char author[MAX_AUTHOR], status[20], publishDate[20];
+};
+
+// ---------- 筛选条件 ----------
+struct Filter {
+    char category[MAX_CATEGORY], author[MAX_AUTHOR], status[20];
+    char startDate[20], endDate[20];
+};
+
+// ==========================================================
+// 第十章 二叉排序树 结构体 (必须在函数前面定义)
+// ==========================================================
+struct BSTNode {
+    char kw[MAX_KEYWORD];
+    int docId[MAX_DOCS_PER_KEY], cnt;
+    BSTNode *l, *r;
+    BSTNode(const char* k, int id) { 
+        strcpy(kw, k); 
+        docId[0] = id; 
+        cnt = 1; 
+        l = r = nullptr; 
+    }
+};
+
+// ==========================================================
+// 第十三章 散列表 (Hash Table)
+// ==========================================================
+class HashTable {
+    struct Node {
+        int id;
+        Document* docPtr;
+        Node* next;
+        Node(int i, Document* d) : id(i), docPtr(d), next(nullptr) {}
+    };
+    Node* buckets[HASH_SIZE];
+    
+    int hashFunc(int key) { return key % HASH_SIZE; }
+
+public:
+    HashTable() { memset(buckets, 0, sizeof(buckets)); }
+    ~HashTable() { 
+        for(int i=0; i<HASH_SIZE; i++) { 
+            Node* p=buckets[i]; 
+            while(p){ Node* t=p; p=p->next; delete t; } 
+        } 
+    }
+
+    void insert(int id, Document* doc) {
+        int idx = hashFunc(id);
+        Node* p = buckets[idx];
+        while(p) { if(p->id == id) return; p = p->next; }
+        buckets[idx] = new Node(id, doc);
+    }
+
+    Document* search(int id) {
+        int idx = hashFunc(id);
+        Node* p = buckets[idx];
+        while(p) {
+            if(p->id == id) return p->docPtr;
+            p = p->next;
+        }
+        return nullptr;
+    }
+};
+
+// ==========================================================
+// 新增 (第八章)：二叉排序树性能测试 (平衡分析)
+// ==========================================================
+void checkBSTBalance(BSTNode* root, int depth, int& totalDepth, int& nodeCount) {
+    if(!root) return;
+    nodeCount++;
+    totalDepth += depth;
+    checkBSTBalance(root->l, depth+1, totalDepth, nodeCount);
+    checkBSTBalance(root->r, depth+1, totalDepth, nodeCount);
+}
+
+// ---------- 文档管理 ----------
+class DocManager {
+protected:
+    Document data[MAX_SIZE];
+    int length;
+public:
+    DocManager() { length = 0; }
+    int getLength() { return length; }
+    Document* getDoc(int idx) { return (idx >= 0 && idx < length) ? &data[idx] : nullptr; }
+    int findIndexById(int id) { for (int i=0; i<length; i++) if(data[i].id == id) return i; return -1; }
+    bool addDoc(const Document& doc) { if(length >= MAX_SIZE) return false; data[length++] = doc; return true; }
+    bool deleteById(int id) {
+        int pos = findIndexById(id);
+        if(pos == -1) return false;
+        for(int i=pos; i<length-1; i++) data[i] = data[i+1];
+        length--; return true;
+    }
+    bool updateById(int id, const char* t, const char* c, const char* ca, const char* a, const char* s, const char* d) {
+        int pos = findIndexById(id);
+        if(pos == -1) return false;
+        if(t && *t) strcpy(data[pos].title, t);
+        if(c && *c) strcpy(data[pos].content, c);
+        if(ca && *ca) strcpy(data[pos].category, ca);
+        if(a && *a) strcpy(data[pos].author, a);
+        if(s && *s) strcpy(data[pos].status, s);
+        if(d && *d) strcpy(data[pos].publishDate, d);
+        return true;
+    }
+    Document* findById(int id) { int pos = findIndexById(id); return (pos == -1) ? nullptr : &data[pos]; }
+    void saveToFile() {
+        FILE* fp = fopen(DATA_FILE, "w");
+        if(!fp) return;
+        fprintf(fp, "%d\n", length);
+        for(int i=0; i<length; i++) {
+            fprintf(fp, "%d\n%s\n%s\n%s\n%s\n%s\n%s\n",
+                data[i].id, data[i].title, data[i].content, data[i].category,
+                data[i].author, data[i].status, data[i].publishDate);
+        }
+        fclose(fp);
+    }
 void loadFromFile() {
         FILE* fp = fopen(DATA_FILE, "r");
         if(!fp) return;
